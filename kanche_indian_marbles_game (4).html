@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kanche - Dual-Screen Wireless Phone Controller & PC Arena</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Rozha+One&family=Yantra+Kutf:wght@400;600;700&family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS for Low-Latency WebRTC Phone-to-PC Sync -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <!-- QRCode JS for instant phone scanning -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #120904;
+            color: #ffffff;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .font-rozha { font-family: 'Rozha One', serif; }
+        .font-yantra { font-family: 'Yantra Kutf', sans-serif; }
+
+        .glass-panel {
+            background: rgba(38, 22, 12, 0.94);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75);
+        }
+
+        .glow-gold {
+            text-shadow: 0 0 14px rgba(245, 158, 11, 0.8), 0 0 28px rgba(217, 119, 6, 0.5);
+        }
+
+        /* Pulsing motion indicator */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .animate-pulse-ring {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col justify-center items-center bg-amber-950 select-none overflow-hidden">
+
+    <!-- ================================================================= -->
+    <!-- VIEW 1: MAIN PC DISPLAY ARENA                                     -->
+    <!-- ================================================================= -->
+    <div id="pc-view" class="relative w-full h-full max-w-6xl flex flex-col items-center justify-center p-2 sm:p-4">
+
+        <!-- GAME CANVAS -->
+        <canvas id="kancheCanvas" class="w-full h-full rounded-2xl border-2 border-amber-600/50 shadow-2xl bg-amber-950 block cursor-crosshair"></canvas>
+
+        <!-- FOUL BANNER -->
+        <div id="foul-banner" class="hidden absolute top-20 left-1/2 transform -translate-x-1/2 glass-panel border border-red-500/70 bg-red-950/90 text-red-100 px-6 py-3 rounded-2xl shadow-2xl z-20 flex items-center gap-3 font-yantra font-bold text-sm sm:text-base animate-bounce">
+            <i class="fa-solid fa-triangle-exclamation text-yellow-400 text-xl"></i>
+            <span id="foul-text">FOUL! Striker landed inside circle!</span>
+        </div>
+
+        <!-- CONTROLLER STATUS BADGE -->
+        <div id="phone-status-badge" class="absolute top-4 left-1/2 transform -translate-x-1/2 glass-panel px-4 py-1.5 rounded-full border border-emerald-500/50 flex items-center gap-2 text-xs font-yantra font-bold text-emerald-300 shadow-lg z-20 hidden">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <i class="fa-solid fa-mobile-screen-button text-emerald-400"></i>
+            <span id="phone-status-text">PHONE CONTROLLER CONNECTED</span>
+        </div>
+
+        <!-- HUD -->
+        <div id="hud" class="absolute top-4 left-4 right-4 px-3 sm:px-6 py-2 flex justify-between items-center pointer-events-none text-white hidden z-10 font-yantra">
+            <!-- Stage & Shots Left -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="glass-panel px-3 py-1.5 rounded-xl border border-amber-500/40 flex flex-col pointer-events-auto">
+                    <span class="text-[10px] text-amber-300/80 uppercase font-bold tracking-wider">STAGE</span>
+                    <span id="level-title" class="text-xs sm:text-base font-extrabold text-amber-400">STAGE 1: RING SMASH</span>
+                </div>
+                <div class="glass-panel px-3 py-1.5 rounded-xl border border-amber-500/40 flex flex-col pointer-events-auto">
+                    <span class="text-[10px] text-amber-300/80 uppercase font-bold tracking-wider">SHOTS LEFT</span>
+                    <span id="shots-val" class="text-xs sm:text-base font-black text-emerald-400">5 / 5</span>
+                </div>
+            </div>
+
+            <!-- Target Goal Progress -->
+            <div class="hidden md:flex flex-col items-center glass-panel px-4 py-1.5 rounded-xl border border-amber-500/40 pointer-events-auto">
+                <span class="text-[10px] text-amber-300/80 uppercase font-bold tracking-wider">MARBLES TO KNOCK</span>
+                <div class="flex items-center gap-2">
+                    <span id="target-progress" class="text-sm font-bold text-amber-300">0 / 4 OUT</span>
+                    <div class="w-28 bg-amber-950/80 h-2.5 rounded-full overflow-hidden border border-amber-700/50">
+                        <div id="target-bar" class="bg-gradient-to-r from-amber-500 via-yellow-400 to-emerald-400 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Score & Coins -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="glass-panel px-3 py-1.5 rounded-xl border border-amber-500/40 flex flex-col items-end pointer-events-auto">
+                    <span class="text-[10px] text-amber-300/80 uppercase font-bold tracking-wider">SCORE</span>
+                    <span id="score-val" class="text-sm sm:text-lg font-black text-amber-400 glow-gold">0000</span>
+                </div>
+                <div class="glass-panel px-3 py-1.5 rounded-xl border border-amber-500/40 flex flex-col items-end pointer-events-auto">
+                    <span class="text-[10px] text-amber-300/80 uppercase font-bold tracking-wider">COINS</span>
+                    <span id="coins-val" class="text-xs sm:text-base font-bold text-yellow-300 flex items-center gap-1">
+                        <i class="fa-solid fa-coins text-yellow-400"></i> <span id="coin-num">0</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN MENU -->
+        <div id="main-menu" class="absolute inset-0 flex flex-col items-center justify-center bg-stone-950/90 backdrop-blur-md rounded-2xl z-30 p-6 text-center">
+            <div class="mb-6 relative">
+                <div class="absolute -inset-2 bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 rounded-3xl blur-xl opacity-40 animate-pulse"></div>
+                <div class="relative glass-panel border border-amber-500/50 p-6 sm:p-8 rounded-2xl max-w-md">
+                    <div class="text-4xl sm:text-5xl font-black font-rozha tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-orange-500 glow-gold">
+                        कंचे - KANCHE
+                    </div>
+                    <p class="text-xs sm:text-sm font-yantra font-bold text-amber-300 uppercase tracking-widest mt-2">
+                        TRADITIONAL INDIAN MARBLES ARENA
+                    </p>
+                    <p class="text-xs text-amber-200/80 mt-3 leading-relaxed">
+                        Control your primary <strong class="text-emerald-400">Green Kancha</strong> using your smartphone as a wireless handheld flick controller!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+                <button id="btn-pair-phone" class="flex-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-stone-950 font-black font-yantra py-3.5 px-5 rounded-xl shadow-lg border border-emerald-300 transform transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-base sm:text-lg">
+                    <i class="fa-solid fa-mobile-screen text-xl"></i> CONNECT PHONE CONTROLLER
+                </button>
+                <button id="btn-play-mouse" class="glass-panel hover:bg-amber-900/40 text-amber-300 font-bold font-yantra py-3.5 px-5 rounded-xl border border-amber-500/50 transform transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-base">
+                    <i class="fa-solid fa-computer-mouse"></i> PLAY ON PC
+                </button>
+            </div>
+
+            <div class="mt-6 flex items-center gap-6 text-amber-300/80 text-xs sm:text-sm">
+                <button id="btn-shop" class="hover:text-amber-300 transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-gem text-yellow-400"></i> GOTI HANGAR
+                </button>
+                <span class="text-amber-800">|</span>
+                <button id="btn-rules" class="hover:text-amber-300 transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-book-open text-amber-400"></i> RULES & GUIDE
+                </button>
+            </div>
+        </div>
+
+        <!-- PAIRING MODAL (QR CODE FOR PHONE CONTROLLER) -->
+        <div id="pair-modal" class="hidden absolute inset-0 flex items-center justify-center bg-stone-950/95 backdrop-blur-md rounded-2xl z-40 p-6">
+            <div class="glass-panel p-6 rounded-2xl border border-amber-500/60 max-w-md w-full text-center flex flex-col items-center">
+                <h3 class="text-2xl font-black font-rozha text-amber-400 mb-1 flex items-center gap-2">
+                    <i class="fa-solid fa-qrcode text-emerald-400"></i> PAIR YOUR PHONE
+                </h3>
+                <p class="text-xs text-amber-200/80 font-yantra mb-4">
+                    Scan the QR code with your phone camera or enter the room link to open your handheld Green Kancha pad.
+                </p>
+
+                <!-- QR CODE CONTAINER -->
+                <div class="p-3 bg-white rounded-xl shadow-2xl mb-4 border-2 border-amber-500 flex items-center justify-center">
+                    <div id="qrcode"></div>
+                </div>
+
+                <div class="w-full bg-amber-950/80 p-3 rounded-xl border border-amber-800/60 mb-4 flex flex-col items-center">
+                    <span class="text-[10px] text-amber-300/70 font-bold uppercase">ROOM CODE</span>
+                    <span id="room-code-display" class="text-2xl font-black text-amber-400 tracking-widest my-1">CONNECTING...</span>
+                    <span class="text-[11px] text-amber-300/80 truncate max-w-full px-2" id="room-url-display">Generating Peer Link...</span>
+                </div>
+
+                <div class="flex gap-3 w-full font-yantra">
+                    <button id="btn-start-game-paired" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play"></i> START ARENA
+                    </button>
+                    <button id="btn-close-pair" class="glass-panel text-amber-300 hover:text-white px-4 py-3 rounded-xl border border-amber-600/40">
+                        CANCEL
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEVEL SELECT MENU -->
+        <div id="level-menu" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-stone-950/95 backdrop-blur-md rounded-2xl z-30 p-6">
+            <div class="flex justify-between items-center w-full max-w-3xl mb-6 pb-3 border-b border-amber-800/60">
+                <h2 class="text-2xl sm:text-3xl font-black font-rozha text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid fa-trophy text-yellow-400"></i> SELECT ARENA STAGE
+                </h2>
+                <button id="btn-close-level" class="glass-panel text-amber-300 hover:text-white p-2 rounded-xl border border-amber-600/40">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl my-auto">
+                <div class="level-card glass-panel p-4 rounded-2xl border border-amber-500/40 flex flex-col items-center text-center hover:border-yellow-400 transition-all cursor-pointer group" data-level="1">
+                    <div class="w-12 h-12 rounded-full bg-amber-900/60 border-2 border-amber-400 flex items-center justify-center text-xl text-amber-300 mb-2 group-hover:scale-110 transition-transform">1</div>
+                    <h3 class="font-bold text-amber-200 font-yantra text-base">Ring Smash</h3>
+                    <p class="text-[11px] text-amber-300/70 mt-1">Knock 4 marbles out of chalk circle.</p>
+                </div>
+                <div class="level-card glass-panel p-4 rounded-2xl border border-amber-500/40 flex flex-col items-center text-center hover:border-yellow-400 transition-all cursor-pointer group" data-level="2">
+                    <div class="w-12 h-12 rounded-full bg-amber-900/60 border-2 border-amber-400 flex items-center justify-center text-xl text-amber-300 mb-2 group-hover:scale-110 transition-transform">2</div>
+                    <h3 class="font-bold text-amber-200 font-yantra text-base">Pillu Pit (Gully)</h3>
+                    <p class="text-[11px] text-amber-300/70 mt-1">Sink target marbles directly into Gully hole!</p>
+                </div>
+                <div class="level-card glass-panel p-4 rounded-2xl border border-amber-500/40 flex flex-col items-center text-center hover:border-yellow-400 transition-all cursor-pointer group" data-level="3">
+                    <div class="w-12 h-12 rounded-full bg-amber-900/60 border-2 border-amber-400 flex items-center justify-center text-xl text-amber-300 mb-2 group-hover:scale-110 transition-transform">3</div>
+                    <h3 class="font-bold text-amber-200 font-yantra text-base">Master Obstacle</h3>
+                    <p class="text-[11px] text-amber-300/70 mt-1">Dodge wooden pegs & ricochet target gotis out!</p>
+                </div>
+                <div class="level-card glass-panel p-4 rounded-2xl border border-amber-500/40 flex flex-col items-center text-center hover:border-yellow-400 transition-all cursor-pointer group" data-level="4">
+                    <div class="w-12 h-12 rounded-full bg-amber-900/60 border-2 border-amber-400 flex items-center justify-center text-xl text-amber-300 mb-2 group-hover:scale-110 transition-transform">4</div>
+                    <h3 class="font-bold text-amber-200 font-yantra text-base">Grand Lakhoti</h3>
+                    <p class="text-[11px] text-amber-300/70 mt-1">High-density marble circle with tight boundaries!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- GOTI SHOP & RULES MODAL -->
+        <div id="shop-menu" class="hidden absolute inset-0 flex flex-col bg-stone-950/95 backdrop-blur-md rounded-2xl z-30 p-6">
+            <div class="flex justify-between items-center pb-4 border-b border-amber-800/60">
+                <div>
+                    <h2 class="text-2xl font-black font-rozha text-amber-400 flex items-center gap-2">
+                        <i class="fa-solid fa-gem text-yellow-400"></i> GOTI HANGAR
+                    </h2>
+                </div>
+                <button id="btn-close-shop" class="glass-panel text-amber-300 p-2 rounded-xl border border-amber-700/50">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 my-auto py-4">
+                <div class="glass-panel p-4 rounded-xl border border-amber-600/40 flex flex-col items-center justify-between text-center">
+                    <div class="w-16 h-16 rounded-full bg-emerald-600 border-2 border-emerald-300 shadow-lg flex items-center justify-center my-2"></div>
+                    <div class="font-bold font-yantra text-amber-200">Emerald Swirl</div>
+                    <p class="text-[11px] text-amber-300/60">Classic Indian Green Glass Marble.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- RESULT MENU -->
+        <div id="result-menu" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-stone-950/95 backdrop-blur-md rounded-2xl z-30 p-6 text-center">
+            <div class="glass-panel p-8 rounded-2xl border border-amber-500/50 max-w-md w-full">
+                <h2 id="result-title" class="text-3xl sm:text-4xl font-black font-rozha text-amber-400 glow-gold mb-1">VICTORY!</h2>
+                <p id="result-subtitle" class="text-xs text-amber-200/80 font-bold mb-6 font-yantra">STAGE CLEARED LIKE A CHAMPION</p>
+
+                <div class="grid grid-cols-2 gap-3 mb-6 font-yantra">
+                    <div class="bg-amber-950/80 p-3 rounded-xl border border-amber-800/50">
+                        <div class="text-[10px] text-amber-300/70 uppercase">FINAL SCORE</div>
+                        <div id="res-score" class="text-xl font-black text-amber-400">0</div>
+                    </div>
+                    <div class="bg-amber-950/80 p-3 rounded-xl border border-amber-800/50">
+                        <div class="text-[10px] text-amber-300/70 uppercase">COINS EARNED</div>
+                        <div id="res-coins" class="text-xl font-black text-yellow-300">+0</div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 font-yantra">
+                    <button id="btn-retry" class="flex-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black py-3 rounded-xl transition-all">REPLAY</button>
+                    <button id="btn-next-level" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl transition-all">NEXT STAGE</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- VIEW 2: PHONE CONTROLLER INTERFACE                                -->
+    <!-- ================================================================= -->
+    <div id="phone-view" class="hidden fixed inset-0 w-full h-full bg-stone-950 z-50 flex flex-col justify-between p-4 select-none touch-none overflow-hidden">
+        
+        <!-- Phone Controller Top Status Header -->
+        <div class="glass-panel p-3 rounded-2xl border border-emerald-500/40 flex items-center justify-between font-yantra">
+            <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></div>
+                <span class="text-xs font-black text-emerald-300 tracking-wider">KANCHE HANDHELD</span>
+            </div>
+            <div class="text-xs font-bold text-amber-300" id="phone-conn-status">
+                <i class="fa-solid fa-wifi text-emerald-400 mr-1"></i> LINKED TO PC
+            </div>
+        </div>
+
+        <!-- Phone Controller Interactive Canvas / Slingshot Pad -->
+        <div class="relative flex-1 my-3 rounded-3xl border-2 border-emerald-500/40 bg-gradient-to-b from-stone-900 via-amber-950 to-stone-950 overflow-hidden flex flex-col items-center justify-center p-4">
+            
+            <!-- Instructions Overlay -->
+            <div class="absolute top-4 text-center px-4 pointer-events-none">
+                <span class="text-amber-300 font-yantra font-bold text-sm block">PULL BACK GREEN KANCHA & RELEASE</span>
+                <span class="text-[11px] text-amber-200/60 block mt-0.5">Aim target ring on PC Screen in front of you!</span>
+            </div>
+
+            <!-- Controller Canvas for Touch & Pull motion -->
+            <canvas id="controllerCanvas" class="w-full h-full block rounded-2xl"></canvas>
+
+            <!-- Real-time Tension Meter Bar -->
+            <div class="absolute bottom-4 left-6 right-6 flex flex-col items-center pointer-events-none">
+                <div class="flex justify-between w-full text-[10px] font-yantra font-bold text-amber-300/80 mb-1">
+                    <span>FLICK POWER</span>
+                    <span id="power-percent">0%</span>
+                </div>
+                <div class="w-full h-3 bg-stone-950/80 rounded-full overflow-hidden border border-amber-600/50 p-0.5">
+                    <div id="power-bar" class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 w-0 transition-all duration-75"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Phone Bottom Info Strip -->
+        <div class="glass-panel p-3 rounded-2xl border border-amber-500/40 flex justify-around items-center font-yantra text-center text-xs">
+            <div>
+                <span class="text-[10px] text-amber-300/70 block uppercase">SHOTS LEFT</span>
+                <span id="phone-shots-left" class="font-extrabold text-emerald-400 text-sm">5</span>
+            </div>
+            <div class="w-px h-6 bg-amber-800/60"></div>
+            <div>
+                <span class="text-[10px] text-amber-300/70 block uppercase">STAGE</span>
+                <span id="phone-stage-val" class="font-extrabold text-amber-300 text-sm">1</span>
+            </div>
+            <div class="w-px h-6 bg-amber-800/60"></div>
+            <div>
+                <span class="text-[10px] text-amber-300/70 block uppercase">SCORE</span>
+                <span id="phone-score-val" class="font-extrabold text-yellow-300 text-sm">0000</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- JAVASCRIPT GAME & WEBRTC CONTROLLER LOGIC                         -->
+    <!-- ================================================================= -->
+    <script>
+        class AudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playClink(intensity = 1.0) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc1 = this.ctx.createOscillator();
+                    const osc2 = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc1.type = 'sine';
+                    osc2.type = 'triangle';
+
+                    const baseFreq = 1800 + Math.random() * 400;
+                    osc1.frequency.setValueAtTime(baseFreq, now);
+                    osc2.frequency.setValueAtTime(baseFreq * 1.5, now);
+
+                    const vol = Math.min(0.35, 0.05 + intensity * 0.3);
+                    gain.gain.setValueAtTime(vol, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+                    osc1.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc1.start(now);
+                    osc2.start(now);
+                    osc1.stop(now + 0.12);
+                    osc2.stop(now + 0.12);
+                } catch (e) {}
+            }
+
+            playHoleDrop() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(500, now);
+                    osc.frequency.exponentialRampToValueAtTime(110, now + 0.28);
+
+                    gain.gain.setValueAtTime(0.35, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.28);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now);
+                    osc.stop(now + 0.28);
+                } catch (e) {}
+            }
+
+            playWin() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const notes = [523.25, 659.25, 783.99, 1046.50];
+                    notes.forEach((freq, i) => {
+                        const now = this.ctx.currentTime + i * 0.09;
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now);
+                        gain.gain.setValueAtTime(0.25, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now);
+                        osc.stop(now + 0.32);
+                    });
+                } catch (e) {}
+            }
+        }
+
+        const audio = new AudioSynth();
+
+        // Canvas Setup
+        const canvas = document.getElementById('kancheCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const ctrlCanvas = document.getElementById('controllerCanvas');
+        const ctrlCtx = ctrlCanvas ? ctrlCanvas.getContext('2d') : null;
+
+        function resizeCanvas() {
+            const container = document.getElementById('pc-view');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+
+            if (ctrlCanvas && ctrlCanvas.parentElement) {
+                ctrlCanvas.width = ctrlCanvas.parentElement.clientWidth;
+                ctrlCanvas.height = ctrlCanvas.parentElement.clientHeight;
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // App Mode & State
+        let isPhoneMode = false;
+        let peer = null;
+        let dataConn = null;
+        let roomID = '';
+
+        let gameState = 'MENU';
+        let currentLevel = 1;
+        let score = 0;
+        let coins = 0;
+        let shotsRemaining = 5;
+        let targetsKnocked = 0;
+        let totalTargets = 4;
+        let activeSkin = 'emerald';
+
+        // Physics Constants
+        let FRICTION = 0.982;
+        let RESTITUTION = 0.88;
+
+        // Entities
+        let marbles = [];
+        let striker = null;
+        let obstacles = [];
+        let ringCenter = { x: 0, y: 0, radius: 140 };
+        let gullyHole = { x: 0, y: 0, radius: 26 };
+
+        // Aiming Control State
+        let isAiming = false;
+        let aimStart = { x: 0, y: 0 };
+        let aimCurrent = { x: 0, y: 0 };
+        let remoteAimVector = { dx: 0, dy: 0, power: 0, angle: 0, active: false };
+        let isShotActive = false;
+
+        // Visual Effects
+        let dustParticles = [];
+        let floatingTexts = [];
+
+        class Marble {
+            constructor(x, y, radius = 16, type = 'target', color = '#d97706', swirlColor = '#fef08a') {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = radius;
+                this.type = type;
+                this.color = color;
+                this.swirlColor = swirlColor;
+                this.isOut = false;
+                this.inHole = false;
+                this.scale = 1.0;
+            }
+
+            update() {
+                if (this.inHole) {
+                    this.scale = Math.max(0, this.scale - 0.08);
+                    return;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                if (Math.hypot(this.vx, this.vy) < 0.05) {
+                    this.vx = 0;
+                    this.vy = 0;
+                }
+
+                const margin = this.radius;
+                if (this.x < margin) {
+                    this.x = margin;
+                    this.vx *= -RESTITUTION;
+                    audio.playClink(0.3);
+                } else if (this.x > canvas.width - margin) {
+                    this.x = canvas.width - margin;
+                    this.vx *= -RESTITUTION;
+                    audio.playClink(0.3);
+                }
+
+                if (this.y < margin) {
+                    this.y = margin;
+                    this.vy *= -RESTITUTION;
+                    audio.playClink(0.3);
+                } else if (this.y > canvas.height - margin) {
+                    this.y = canvas.height - margin;
+                    this.vy *= -RESTITUTION;
+                    audio.playClink(0.3);
+                }
+            }
+
+            draw(targetCtx = ctx) {
+                if (this.scale <= 0) return;
+
+                targetCtx.save();
+                targetCtx.translate(this.x, this.y);
+                targetCtx.scale(this.scale, this.scale);
+
+                // Shadow
+                targetCtx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                targetCtx.beginPath();
+                targetCtx.ellipse(3, this.radius * 0.82, this.radius * 0.9, this.radius * 0.4, 0, 0, Math.PI * 2);
+                targetCtx.fill();
+
+                // Glass Base Gradient
+                const grad = targetCtx.createRadialGradient(
+                    -this.radius * 0.35, -this.radius * 0.35, this.radius * 0.1,
+                    0, 0, this.radius
+                );
+                grad.addColorStop(0, '#ffffff');
+                grad.addColorStop(0.2, this.color);
+                grad.addColorStop(0.85, '#000000');
+                grad.addColorStop(1, '#111111');
+
+                targetCtx.fillStyle = grad;
+                targetCtx.beginPath();
+                targetCtx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                targetCtx.fill();
+
+                // Glass Swirl
+                targetCtx.strokeStyle = this.swirlColor;
+                targetCtx.lineWidth = 3.5;
+                targetCtx.beginPath();
+                targetCtx.arc(-2, 0, this.radius * 0.55, 0.2, Math.PI * 0.95);
+                targetCtx.stroke();
+
+                // Specular Highlight
+                targetCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                targetCtx.beginPath();
+                targetCtx.ellipse(-this.radius * 0.35, -this.radius * 0.35, this.radius * 0.32, this.radius * 0.16, -Math.PI / 4, 0, Math.PI * 2);
+                targetCtx.fill();
+
+                if (this.type === 'striker') {
+                    targetCtx.strokeStyle = '#10b981';
+                    targetCtx.lineWidth = 2.5;
+                    targetCtx.beginPath();
+                    targetCtx.arc(0, 0, this.radius + 6, 0, Math.PI * 2);
+                    targetCtx.stroke();
+                }
+
+                targetCtx.restore();
+            }
+        }
+
+        function setupLevel(lvl) {
+            currentLevel = lvl;
+            marbles = [];
+            obstacles = [];
+            dustParticles = [];
+            floatingTexts = [];
+            isShotActive = false;
+            targetsKnocked = 0;
+
+            FRICTION = (activeSkin === 'sapphire') ? 0.988 : 0.982;
+
+            ringCenter = {
+                x: canvas.width / 2,
+                y: canvas.height * 0.42,
+                radius: Math.min(canvas.width, canvas.height) * 0.26
+            };
+
+            gullyHole = {
+                x: ringCenter.x,
+                y: ringCenter.y,
+                radius: 28
+            };
+
+            const strikerColor = '#10b981';
+            const swirlColor = '#fef08a';
+
+            striker = new Marble(canvas.width / 2, canvas.height - 110, 18, 'striker', strikerColor, swirlColor);
+            marbles.push(striker);
+
+            if (lvl === 1) {
+                shotsRemaining = 5;
+                totalTargets = 4;
+                document.getElementById('level-title').innerText = 'STAGE 1: RING SMASH';
+
+                const targetColors = ['#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
+                for (let i = 0; i < totalTargets; i++) {
+                    const angle = (i / totalTargets) * Math.PI * 2;
+                    const dist = 32;
+                    const mx = ringCenter.x + Math.cos(angle) * dist;
+                    const my = ringCenter.y + Math.sin(angle) * dist;
+                    marbles.push(new Marble(mx, my, 16, 'target', targetColors[i % targetColors.length], '#ffffff'));
+                }
+            } else if (lvl === 2) {
+                shotsRemaining = 6;
+                totalTargets = 5;
+                document.getElementById('level-title').innerText = 'STAGE 2: GULLY PIT HOLE';
+
+                for (let i = 0; i < totalTargets; i++) {
+                    const angle = (i / totalTargets) * Math.PI * 2;
+                    const dist = 60 + Math.random() * 20;
+                    const mx = ringCenter.x + Math.cos(angle) * dist;
+                    const my = ringCenter.y + Math.sin(angle) * dist;
+                    marbles.push(new Marble(mx, my, 16, 'target', '#f97316', '#fef08a'));
+                }
+            } else if (lvl === 3) {
+                shotsRemaining = 6;
+                totalTargets = 5;
+                document.getElementById('level-title').innerText = 'STAGE 3: MASTER ARENA';
+
+                obstacles = [
+                    { x: ringCenter.x - 70, y: ringCenter.y - 30, radius: 12 },
+                    { x: ringCenter.x + 70, y: ringCenter.y - 30, radius: 12 },
+                    { x: ringCenter.x, y: ringCenter.y + 70, radius: 12 }
+                ];
+
+                for (let i = 0; i < totalTargets; i++) {
+                    const angle = (i / totalTargets) * Math.PI * 2 + 0.4;
+                    const dist = 45;
+                    const mx = ringCenter.x + Math.cos(angle) * dist;
+                    const my = ringCenter.y + Math.sin(angle) * dist;
+                    marbles.push(new Marble(mx, my, 16, 'target', '#8b5cf6', '#a7f3d0'));
+                }
+            } else if (lvl === 4) {
+                shotsRemaining = 7;
+                totalTargets = 6;
+                document.getElementById('level-title').innerText = 'STAGE 4: GRAND LAKHOTI';
+
+                for (let i = 0; i < totalTargets; i++) {
+                    const angle = (i / totalTargets) * Math.PI * 2;
+                    const dist = 40;
+                    const mx = ringCenter.x + Math.cos(angle) * dist;
+                    const my = ringCenter.y + Math.sin(angle) * dist;
+                    marbles.push(new Marble(mx, my, 16, 'target', '#ec4899', '#fde047'));
+                }
+            }
+
+            updateHUDUI();
+            syncStateToPhoneController();
+        }
+
+        function resolveMarbleCollisions() {
+            for (let iter = 0; iter < 4; iter++) {
+                for (let i = 0; i < marbles.length; i++) {
+                    for (let j = i + 1; j < marbles.length; j++) {
+                        const m1 = marbles[i];
+                        const m2 = marbles[j];
+
+                        if (m1.inHole || m2.inHole) continue;
+
+                        const dx = m2.x - m1.x;
+                        const dy = m2.y - m1.y;
+                        const dist = Math.hypot(dx, dy);
+                        const minDist = m1.radius + m2.radius;
+
+                        if (dist < minDist && dist > 0.0001) {
+                            const overlap = 0.5 * (minDist - dist);
+                            const nx = dx / dist;
+                            const ny = dy / dist;
+
+                            m1.x -= nx * overlap;
+                            m1.y -= ny * overlap;
+                            m2.x += nx * overlap;
+                            m2.y += ny * overlap;
+
+                            const kx = m1.vx - m2.vx;
+                            const ky = m1.vy - m2.vy;
+                            const dot = kx * nx + ky * ny;
+
+                            if (dot > 0) {
+                                m1.vx -= dot * nx * RESTITUTION;
+                                m1.vy -= dot * ny * RESTITUTION;
+                                m2.vx += dot * nx * RESTITUTION;
+                                m2.vy += dot * ny * RESTITUTION;
+
+                                if (iter === 0 && dot > 0.3) {
+                                    audio.playClink(Math.min(1.0, dot / 8));
+                                    createDustSparks((m1.x + m2.x) / 2, (m1.y + m2.y) / 2);
+
+                                    // Send vibration trigger back to phone controller!
+                                    if (dataConn && dataConn.open) {
+                                        dataConn.send({ type: 'VIBRATE', duration: 40 });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                obstacles.forEach(obs => {
+                    marbles.forEach(m => {
+                        if (m.inHole) return;
+                        const dx = m.x - obs.x;
+                        const dy = m.y - obs.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < m.radius + obs.radius && dist > 0.0001) {
+                            const nx = dx / dist;
+                            const ny = dy / dist;
+                            m.x = obs.x + nx * (m.radius + obs.radius);
+                            m.y = obs.y + ny * (m.radius + obs.radius);
+
+                            const dot = m.vx * nx + m.vy * ny;
+                            if (dot < 0) {
+                                m.vx -= 2 * dot * nx * RESTITUTION;
+                                m.vy -= 2 * dot * ny * RESTITUTION;
+                                if (iter === 0) audio.playClink(0.4);
+                            }
+                        }
+                    });
+                });
+            }
+        }
+
+        function createDustSparks(x, y) {
+            for (let i = 0; i < 7; i++) {
+                dustParticles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 3.5,
+                    vy: (Math.random() - 0.5) * 3.5,
+                    radius: Math.random() * 2.5 + 1,
+                    alpha: 1, color: '#fef08a'
+                });
+            }
+        }
+
+        function addFloatingText(x, y, text, color = '#f59e0b') {
+            floatingTexts.push({ x: x, y: y, text: text, color: color, alpha: 1.0, vy: -1.2 });
+        }
+
+        function updatePhysics() {
+            resolveMarbleCollisions();
+            let allStopped = true;
+
+            marbles.forEach(m => {
+                m.update();
+                if (Math.hypot(m.vx, m.vy) > 0.05) {
+                    allStopped = false;
+                }
+
+                if (currentLevel === 2) {
+                    const distToHole = Math.hypot(m.x - gullyHole.x, m.y - gullyHole.y);
+                    if (distToHole < gullyHole.radius * 0.7 && !m.inHole) {
+                        m.inHole = true;
+                        m.vx = 0; m.vy = 0;
+                        audio.playHoleDrop();
+
+                        if (m.type === 'target') {
+                            targetsKnocked++;
+                            score += 250;
+                            coins += 15;
+                            addFloatingText(m.x, m.y, `+250 SINK!`, '#10b981');
+                        }
+                        updateHUDUI();
+                    }
+                } else {
+                    const distToCenter = Math.hypot(m.x - ringCenter.x, m.y - ringCenter.y);
+                    if (m.type === 'target' && !m.isOut && distToCenter > ringCenter.radius + m.radius) {
+                        m.isOut = true;
+                        targetsKnocked++;
+                        score += 150;
+                        coins += 10;
+                        addFloatingText(m.x, m.y, `+150 KNOCKOUT!`, '#f59e0b');
+                        updateHUDUI();
+                    }
+                }
+            });
+
+            if (isShotActive && allStopped) {
+                isShotActive = false;
+
+                const distToCenter = Math.hypot(striker.x - ringCenter.x, striker.y - ringCenter.y);
+                const isInsideCircle = distToCenter <= ringCenter.radius + striker.radius;
+
+                if (isInsideCircle || striker.inHole) {
+                    showFoulNotice("FOUL! Striker landed inside circle - Repositioned outside!");
+                    striker.x = canvas.width / 2;
+                    striker.y = canvas.height - 110;
+                    striker.vx = 0; striker.vy = 0;
+                    striker.inHole = false; striker.scale = 1.0;
+                } else {
+                    striker.x = canvas.width / 2;
+                    striker.y = canvas.height - 110;
+                    striker.vx = 0; striker.vy = 0;
+                }
+
+                syncStateToPhoneController();
+
+                if (targetsKnocked >= totalTargets) {
+                    setTimeout(triggerVictory, 500);
+                } else if (shotsRemaining <= 0) {
+                    setTimeout(triggerGameOver, 500);
+                }
+            }
+        }
+
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Arena Ground
+            const groundGrad = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 50,
+                canvas.width / 2, canvas.height / 2, canvas.width * 0.85
+            );
+            groundGrad.addColorStop(0, '#3a2010');
+            groundGrad.addColorStop(1, '#180c05');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Chalk Ring Circle
+            ctx.save();
+            ctx.strokeStyle = 'rgba(254, 240, 138, 0.45)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([10, 8]);
+            ctx.beginPath();
+            ctx.arc(ringCenter.x, ringCenter.y, ringCenter.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            // Gully Hole
+            if (currentLevel === 2) {
+                ctx.save();
+                ctx.fillStyle = '#0a0502';
+                ctx.beginPath();
+                ctx.arc(gullyHole.x, gullyHole.y, gullyHole.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#3a2010';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Obstacles
+            obstacles.forEach(obs => {
+                ctx.save();
+                ctx.fillStyle = '#78350f';
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Draw Marbles
+            marbles.forEach(m => m.draw(ctx));
+
+            // Dust Particles & Text
+            dustParticles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            floatingTexts.forEach(ft => {
+                ctx.save();
+                ctx.globalAlpha = ft.alpha;
+                ctx.font = 'bold 16px "Yantra Kutf", sans-serif';
+                ctx.fillStyle = ft.color;
+                ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            });
+
+            // Local Mouse Aiming Ray
+            if (isAiming && striker) {
+                drawAimGuide(striker.x, striker.y, aimStart.x - aimCurrent.x, aimStart.y - aimCurrent.y);
+            }
+
+            // Phone Wireless Remote Aiming Ray!
+            if (remoteAimVector.active && striker) {
+                drawAimGuide(striker.x, striker.y, remoteAimVector.dx, remoteAimVector.dy);
+            }
+        }
+
+        function drawAimGuide(originX, originY, dx, dy) {
+            const dist = Math.hypot(dx, dy);
+            const power = Math.min(dist, 120);
+            const angle = Math.atan2(dy, dx);
+
+            ctx.save();
+            ctx.translate(originX, originY);
+
+            // Trajectory Dotted Line
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 3.5;
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(angle) * power * 2.2, Math.sin(angle) * power * 2.2);
+            ctx.stroke();
+
+            // Tension Ring
+            ctx.strokeStyle = `rgba(16, 185, 129, ${power / 120})`;
+            ctx.setLineDash([]);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, power * 0.45, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                updatePhysics();
+                for (let i = dustParticles.length - 1; i >= 0; i--) {
+                    dustParticles[i].x += dustParticles[i].vx;
+                    dustParticles[i].y += dustParticles[i].vy;
+                    dustParticles[i].alpha -= 0.04;
+                    if (dustParticles[i].alpha <= 0) dustParticles.splice(i, 1);
+                }
+                for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                    floatingTexts[i].y += floatingTexts[i].vy;
+                    floatingTexts[i].alpha -= 0.025;
+                    if (floatingTexts[i].alpha <= 0) floatingTexts.splice(i, 1);
+                }
+            }
+            drawScene();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let res = '';
+            for (let i = 0; i < 4; i++) {
+                res += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return 'KANCHE-' + res;
+        }
+
+        function initPCHostPeer() {
+            roomID = generateRoomCode();
+            document.getElementById('room-code-display').innerText = roomID;
+
+            const roomUrl = `${window.location.origin}${window.location.pathname}?role=controller&room=${roomID}`;
+            document.getElementById('room-url-display').innerText = roomUrl;
+
+            // Generate QR Code
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+            new QRCode(qrContainer, {
+                text: roomUrl,
+                width: 170,
+                height: 170,
+                colorDark: "#120904",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            peer = new Peer(roomID);
+
+            peer.on('open', (id) => {
+                console.log('PC Host Peer Ready ID:', id);
+            });
+
+            peer.on('connection', (conn) => {
+                dataConn = conn;
+                console.log('Phone Controller Connected!');
+
+                document.getElementById('phone-status-badge').classList.remove('hidden');
+                document.getElementById('phone-status-text').innerText = 'PHONE CONTROLLER CONNECTED';
+
+                conn.on('data', (data) => {
+                    handlePhoneControllerData(data);
+                });
+
+                conn.on('open', () => {
+                    syncStateToPhoneController();
+                });
+            });
+        }
+
+        function syncStateToPhoneController() {
+            if (dataConn && dataConn.open) {
+                dataConn.send({
+                    type: 'SYNC_STATE',
+                    level: currentLevel,
+                    shotsLeft: shotsRemaining,
+                    score: score
+                });
+            }
+        }
+
+        function handlePhoneControllerData(data) {
+            if (gameState !== 'PLAYING' || isShotActive) return;
+
+            if (data.type === 'AIM_MOVE') {
+                remoteAimVector.active = true;
+                remoteAimVector.dx = data.dx;
+                remoteAimVector.dy = data.dy;
+                remoteAimVector.power = data.power;
+                remoteAimVector.angle = data.angle;
+            } else if (data.type === 'SHOOT') {
+                remoteAimVector.active = false;
+
+                const power = data.power * 0.22;
+                const angle = data.angle;
+
+                striker.vx = Math.cos(angle) * power;
+                striker.vy = Math.sin(angle) * power;
+
+                isShotActive = true;
+                shotsRemaining--;
+                audio.playClink(0.8);
+                updateHUDUI();
+                syncStateToPhoneController();
+            }
+        }
+
+        let ctrlMarble = { x: 0, y: 0, originX: 0, originY: 0, radius: 36 };
+        let ctrlIsDragging = false;
+
+        function initPhoneControllerView(targetRoomID) {
+            isPhoneMode = true;
+            document.getElementById('pc-view').classList.add('hidden');
+            document.getElementById('phone-view').classList.remove('hidden');
+
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                console.log('Phone Controller Peer ID:', id);
+                document.getElementById('phone-conn-status').innerHTML = `<i class="fa-solid fa-spinner animate-spin text-yellow-400 mr-1"></i> CONNECTING TO PC...`;
+
+                dataConn = peer.connect(targetRoomID);
+
+                dataConn.on('open', () => {
+                    document.getElementById('phone-conn-status').innerHTML = `<i class="fa-solid fa-wifi text-emerald-400 mr-1"></i> LINKED TO PC`;
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                });
+
+                dataConn.on('data', (data) => {
+                    if (data.type === 'SYNC_STATE') {
+                        document.getElementById('phone-shots-left').innerText = data.shotsLeft;
+                        document.getElementById('phone-stage-val').innerText = data.level;
+                        document.getElementById('phone-score-val').innerText = data.score.toString().padStart(4, '0');
+                    } else if (data.type === 'VIBRATE') {
+                        if (navigator.vibrate) navigator.vibrate(data.duration || 50);
+                    }
+                });
+            });
+
+            setupPhoneSlingshotCanvas();
+        }
+
+        function setupPhoneSlingshotCanvas() {
+            resizeCanvas();
+
+            ctrlMarble.originX = ctrlCanvas.width / 2;
+            ctrlMarble.originY = ctrlCanvas.height * 0.58;
+            ctrlMarble.x = ctrlMarble.originX;
+            ctrlMarble.y = ctrlMarble.originY;
+
+            function drawPhoneSlingshot() {
+                if (!ctrlCtx) return;
+                ctrlCtx.clearRect(0, 0, ctrlCanvas.width, ctrlCanvas.height);
+
+                // Slingshot Elastic Strings
+                if (ctrlIsDragging) {
+                    ctrlCtx.save();
+                    ctrlCtx.strokeStyle = 'rgba(245, 158, 11, 0.8)';
+                    ctrlCtx.lineWidth = 6;
+                    ctrlCtx.beginPath();
+                    ctrlCtx.moveTo(ctrlMarble.originX - 60, ctrlMarble.originY);
+                    ctrlCtx.lineTo(ctrlMarble.x, ctrlMarble.y);
+                    ctrlCtx.lineTo(ctrlMarble.originX + 60, ctrlMarble.originY);
+                    ctrlCtx.stroke();
+                    ctrlCtx.restore();
+                }
+
+                // Origin Anchor Rings
+                ctrlCtx.fillStyle = 'rgba(245, 158, 11, 0.3)';
+                ctrlCtx.beginPath();
+                ctrlCtx.arc(ctrlMarble.originX - 60, ctrlMarble.originY, 12, 0, Math.PI * 2);
+                ctrlCtx.arc(ctrlMarble.originX + 60, ctrlMarble.originY, 12, 0, Math.PI * 2);
+                ctrlCtx.fill();
+
+                // Draw Green Striker Marble on Phone Screen
+                const tempMarble = new Marble(ctrlMarble.x, ctrlMarble.y, ctrlMarble.radius, 'striker', '#10b981', '#fef08a');
+                tempMarble.draw(ctrlCtx);
+
+                requestAnimationFrame(drawPhoneSlingshot);
+            }
+            drawPhoneSlingshot();
+
+            // Touch Drag Listeners
+            function handlePhoneTouchStart(e) {
+                audio.init();
+                const rect = ctrlCanvas.getBoundingClientRect();
+                const touch = e.touches ? e.touches[0] : e;
+                const tx = touch.clientX - rect.left;
+                const ty = touch.clientY - rect.top;
+
+                const dist = Math.hypot(tx - ctrlMarble.x, ty - ctrlMarble.y);
+                if (dist < ctrlMarble.radius * 2.2) {
+                    ctrlIsDragging = true;
+                    if (navigator.vibrate) navigator.vibrate(20);
+                }
+            }
+
+            function handlePhoneTouchMove(e) {
+                if (!ctrlIsDragging) return;
+                const rect = ctrlCanvas.getBoundingClientRect();
+                const touch = e.touches ? e.touches[0] : e;
+                const tx = touch.clientX - rect.left;
+                const ty = touch.clientY - rect.top;
+
+                const dx = ctrlMarble.originX - tx;
+                const dy = ctrlMarble.originY - ty;
+                const dist = Math.hypot(dx, dy);
+                const maxDist = 120;
+
+                const power = Math.min(dist, maxDist);
+                const angle = Math.atan2(dy, dx);
+
+                ctrlMarble.x = ctrlMarble.originX - Math.cos(angle) * power;
+                ctrlMarble.y = ctrlMarble.originY - Math.sin(angle) * power;
+
+                // Update UI Power Bar
+                const pct = Math.round((power / maxDist) * 100);
+                document.getElementById('power-bar').style.width = `${pct}%`;
+                document.getElementById('power-percent').innerText = `${pct}%`;
+
+                // Stream real-time aim to PC Screen!
+                if (dataConn && dataConn.open) {
+                    dataConn.send({
+                        type: 'AIM_MOVE',
+                        dx: dx,
+                        dy: dy,
+                        power: power,
+                        angle: angle
+                    });
+                }
+            }
+
+            function handlePhoneTouchEnd() {
+                if (!ctrlIsDragging) return;
+                ctrlIsDragging = false;
+
+                const dx = ctrlMarble.originX - ctrlMarble.x;
+                const dy = ctrlMarble.originY - ctrlMarble.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 15 && dataConn && dataConn.open) {
+                    const power = Math.min(dist, 120);
+                    const angle = Math.atan2(dy, dx);
+
+                    dataConn.send({
+                        type: 'SHOOT',
+                        power: power,
+                        angle: angle
+                    });
+
+                    if (navigator.vibrate) navigator.vibrate([30, 20, 60]);
+                }
+
+                // Reset Phone Marble Position
+                ctrlMarble.x = ctrlMarble.originX;
+                ctrlMarble.y = ctrlMarble.originY;
+                document.getElementById('power-bar').style.width = `0%`;
+                document.getElementById('power-percent').innerText = `0%`;
+            }
+
+            ctrlCanvas.addEventListener('touchstart', handlePhoneTouchStart);
+            window.addEventListener('touchmove', handlePhoneTouchMove);
+            window.addEventListener('touchend', handlePhoneTouchEnd);
+
+            ctrlCanvas.addEventListener('mousedown', handlePhoneTouchStart);
+            window.addEventListener('mousemove', handlePhoneTouchMove);
+            window.addEventListener('mouseup', handlePhoneTouchEnd);
+        }
+
+        // Mouse Fallback Aiming on PC
+        function handlePointerStart(e) {
+            if (gameState !== 'PLAYING' || isShotActive || shotsRemaining <= 0) return;
+            audio.init();
+
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const pos = { x: clientX - rect.left, y: clientY - rect.top };
+
+            const dist = Math.hypot(pos.x - striker.x, pos.y - striker.y);
+
+            if (dist < striker.radius * 2.5) {
+                isAiming = true;
+                aimStart = { x: striker.x, y: striker.y };
+                aimCurrent = pos;
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (!isAiming) return;
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            aimCurrent = { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function handlePointerEnd() {
+            if (!isAiming) return;
+            isAiming = false;
+
+            const dx = aimStart.x - aimCurrent.x;
+            const dy = aimStart.y - aimCurrent.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist > 15) {
+                const power = Math.min(dist, 120) * 0.22;
+                const angle = Math.atan2(dy, dx);
+
+                striker.vx = Math.cos(angle) * power;
+                striker.vy = Math.sin(angle) * power;
+
+                isShotActive = true;
+                shotsRemaining--;
+                audio.playClink(0.8);
+                updateHUDUI();
+            }
+        }
+
+        canvas.addEventListener('mousedown', handlePointerStart);
+        window.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerEnd);
+
+        canvas.addEventListener('touchstart', handlePointerStart);
+        window.addEventListener('touchmove', handlePointerMove);
+        window.addEventListener('touchend', handlePointerEnd);
+
+        let foulTimer = null;
+        function showFoulNotice(msg) {
+            const banner = document.getElementById('foul-banner');
+            const txt = document.getElementById('foul-text');
+            if (banner && txt) {
+                txt.innerText = msg;
+                banner.classList.remove('hidden');
+                if (foulTimer) clearTimeout(foulTimer);
+                foulTimer = setTimeout(() => banner.classList.add('hidden'), 2200);
+            }
+        }
+
+        function updateHUDUI() {
+            document.getElementById('shots-val').innerText = `${shotsRemaining} REMAINING`;
+            document.getElementById('score-val').innerText = score.toString().padStart(4, '0');
+            document.getElementById('coin-num').innerText = coins;
+
+            document.getElementById('target-progress').innerText = `${targetsKnocked} / ${totalTargets} CLEARED`;
+            const pct = Math.min(100, (targetsKnocked / totalTargets) * 100);
+            document.getElementById('target-bar').style.width = `${pct}%`;
+        }
+
+        function triggerVictory() {
+            audio.playWin();
+            gameState = 'RESULT';
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('result-menu').classList.remove('hidden');
+
+            document.getElementById('result-title').innerText = 'VICTORY!';
+            document.getElementById('result-subtitle').innerText = 'EXCELLENT STRIKE, KANCHE MASTER!';
+            document.getElementById('res-score').innerText = score;
+            document.getElementById('res-coins').innerText = `+${coins}`;
+        }
+
+        function triggerGameOver() {
+            gameState = 'RESULT';
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('result-menu').classList.remove('hidden');
+
+            document.getElementById('result-title').innerText = 'OUT OF SHOTS';
+            document.getElementById('result-subtitle').innerText = 'RETRY TO CLEAR ALL MARBLES!';
+            document.getElementById('res-score').innerText = score;
+            document.getElementById('res-coins').innerText = `+${coins}`;
+        }
+
+        document.getElementById('btn-pair-phone').addEventListener('click', () => {
+            initPCHostPeer();
+            document.getElementById('pair-modal').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-pair').addEventListener('click', () => {
+            document.getElementById('pair-modal').classList.add('hidden');
+        });
+
+        document.getElementById('btn-start-game-paired').addEventListener('click', () => {
+            document.getElementById('pair-modal').classList.add('hidden');
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('level-menu').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-play-mouse').addEventListener('click', () => {
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('level-menu').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-level').addEventListener('click', () => {
+            document.getElementById('level-menu').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+        });
+
+        document.querySelectorAll('.level-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const lvl = parseInt(card.getAttribute('data-level'));
+                document.getElementById('level-menu').classList.add('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                gameState = 'PLAYING';
+                setupLevel(lvl);
+            });
+        });
+
+        document.getElementById('btn-retry').addEventListener('click', () => {
+            document.getElementById('result-menu').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            gameState = 'PLAYING';
+            setupLevel(currentLevel);
+        });
+
+        document.getElementById('btn-next-level').addEventListener('click', () => {
+            document.getElementById('result-menu').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            gameState = 'PLAYING';
+            setupLevel((currentLevel % 4) + 1);
+        });
+
+        document.getElementById('btn-shop').addEventListener('click', () => {
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('shop-menu').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-shop').addEventListener('click', () => {
+            document.getElementById('shop-menu').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+        });
+
+        window.onload = function() {
+            resizeCanvas();
+
+            // Check if opened via Phone Controller QR Code link
+            const urlParams = new URLSearchParams(window.location.search);
+            const role = urlParams.get('role');
+            const room = urlParams.get('room');
+
+            if (role === 'controller' && room) {
+                initPhoneControllerView(room);
+            } else {
+                gameLoop();
+            }
+        };
+    </script>
+</body>
+</html>
